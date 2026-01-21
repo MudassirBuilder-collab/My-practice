@@ -1,214 +1,153 @@
-# app.py
-# ---------------------------------------------
-# COVID Prediction Web App (Final Working Version)
-# KNN + SMOTE + Best K + Advanced Visualizations
-# Written in human-style clean code
-# ---------------------------------------------
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix
-from imblearn.over_sampling import SMOTE
+from sklearn.metrics import accuracy_score
 
-# Make plots look nicer
-sns.set_style("whitegrid")
+st.set_page_config(page_title="Preprocessing vs Postprocessing (KNN)", layout="wide")
 
-# ---------------------------------------------
-# Page Configuration
-# ---------------------------------------------
-st.set_page_config(page_title="COVID Predictor App", layout="wide")
+st.title("📊 Preprocessing vs Postprocessing for KNN Model")
+st.write("This app demonstrates how data preprocessing impacts KNN performance.")
 
-# ---------------------------------------------
-# Load & Process Data
-# ---------------------------------------------
-@st.cache_data
-def load_data():
-    raw = pd.read_csv("patient.csv")
-    
-    # Only required columns
-    df = raw[["sex", "age", "pneumonia", "diabetes", "asthma", "outcome"]].copy()
-    
-    # Encode features: 1 = Yes, 0 = No
-    df["sex"] = df["sex"].map({1: 1, 2: 0})
-    df["pneumonia"] = df["pneumonia"].map({1: 1, 2: 0})
-    df["diabetes"] = df["diabetes"].map({1: 1, 2: 0})
-    df["asthma"] = df["asthma"].map({1: 1, 2: 0})
-    
-    # Outcome: 1 = Positive, 0 = Negative
-    df["outcome"] = df["outcome"].map({1: 1, 2: 0})
-    
-    return raw, df.dropna()
+# ==========================
+# LOAD DATA
+# ==========================
+df_raw = pd.read_csv(r"C:\Users\L4-PC23\Downloads\customer_lifestyle_300_rows - customer_lifestyle_300_rows.csv")
+#df_raw = pd.read_csv(r"C:\Users\dell\Downloads\customer_lifestyle_300_rows.csv")
+df_raw = pd.read_csv(r"C:\Users\L4-PC23\Downloads\customer_lifestyle_300_rows - customer_lifestyle_300_rows.csv")
 
-raw_df, df = load_data()
 
-# ---------------------------------------------
-# Feature / Target
-# ---------------------------------------------
-X = df.drop("outcome", axis=1)
-y = df["outcome"]
+# ==========================
+# RAW DATA SECTION
+# ==========================
+st.header("🔴 RAW DATA (Before Preprocessing)")
+
+st.subheader("Raw Dataset Preview")
+st.dataframe(df_raw.head(10))
+
+st.subheader("Missing Values (Raw Data)")
+st.write(df_raw.isnull().sum())
+
+fig1, ax1 = plt.subplots(figsize=(8,4))
+sns.heatmap(df_raw.isnull(), cbar=False, ax=ax1)
+ax1.set_title("Missing Values Heatmap (RAW DATA)")
+st.pyplot(fig1)
+
+st.subheader("Raw Feature Distributions (Unscaled)")
+fig2 = df_raw[['age','monthly_income','steps_per_day','bmi']].hist(
+    figsize=(8,6), bins=20
+)
+plt.suptitle("RAW Numerical Features")
+st.pyplot(plt)
+
+# ==========================
+# PREPROCESSING
+# ==========================
+df_clean = df_raw.copy()
+
+text_cols = ['gender','exercise_level','location','purchase_decision']
+for col in text_cols:
+    df_clean[col] = df_clean[col].str.lower().str.strip()
+
+num_cols = ['age','monthly_income','steps_per_day','bmi']
+cat_cols = ['gender','exercise_level','location']
+
+for col in num_cols:
+    df_clean[col].fillna(df_clean[col].median(), inplace=True)
+
+for col in cat_cols:
+    df_clean[col].fillna(df_clean[col].mode()[0], inplace=True)
+
+encoder = LabelEncoder()
+for col in cat_cols + ['purchase_decision']:
+    df_clean[col] = encoder.fit_transform(df_clean[col])
+
+X = df_clean.drop('purchase_decision', axis=1)
+y = df_clean['purchase_decision']
 
 scaler = StandardScaler()
-X["age"] = scaler.fit_transform(X[["age"]])
+X_scaled = scaler.fit_transform(X)
+
+# ==========================
+# POSTPROCESSED DATA
+# ==========================
+st.header("🟢 POSTPROCESSED DATA (After Preprocessing)")
+
+df_processed = pd.DataFrame(X_scaled, columns=X.columns)
+
+st.subheader("Processed Data Preview")
+st.dataframe(df_processed.head(10))
+
+st.subheader("Missing Values (After Cleaning)")
+st.write(df_processed.isnull().sum())
+
+fig3, ax3 = plt.subplots(figsize=(8,4))
+sns.heatmap(df_processed.isnull(), cbar=False, ax=ax3)
+ax3.set_title("No Missing Values (POSTPROCESSED DATA)")
+st.pyplot(fig3)
+
+st.subheader("Scaled Feature Distributions")
+fig4 = df_processed.hist(figsize=(8,6), bins=20)
+plt.suptitle("POSTPROCESSED (Scaled) Features")
+st.pyplot(plt)
+
+# ==========================
+# MODEL COMPARISON
+# ==========================
+st.header("⚖️ KNN Performance Comparison")
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.25, random_state=42, stratify=y
+    X, y, test_size=0.25, random_state=42
 )
 
-# Apply SMOTE to training set
-smote = SMOTE(random_state=42)
-X_train_res, y_train_res = smote.fit_resample(X_train, y_train)
+knn_raw = KNeighborsClassifier(n_neighbors=5)
+knn_raw.fit(X_train, y_train)
+pred_raw = knn_raw.predict(X_test)
+acc_raw = accuracy_score(y_test, pred_raw)
 
-# ---------------------------------------------
-# Find Best K using Cross Validation
-# ---------------------------------------------
-k_scores = {}
-for k in range(3, 21, 2):
-    model = KNeighborsClassifier(n_neighbors=k, weights="distance")
-    scores = cross_val_score(model, X_train_res, y_train_res, cv=5)
-    k_scores[k] = scores.mean()
+X_train_s, X_test_s, y_train, y_test = train_test_split(
+    X_scaled, y, test_size=0.25, random_state=42
+)
 
-best_k = max(k_scores, key=k_scores.get)
+knn_scaled = KNeighborsClassifier(n_neighbors=5)
+knn_scaled.fit(X_train_s, y_train)
+pred_scaled = knn_scaled.predict(X_test_s)
+acc_scaled = accuracy_score(y_test, pred_scaled)
 
-# ---------------------------------------------
-# Train Final Model
-# ---------------------------------------------
-knn = KNeighborsClassifier(n_neighbors=best_k, weights="distance")
-knn.fit(X_train_res, y_train_res)
+st.metric("Accuracy WITHOUT Preprocessing", round(acc_raw, 3))
+st.metric("Accuracy WITH Preprocessing", round(acc_scaled, 3))
 
-y_pred = knn.predict(X_test)
-accuracy = accuracy_score(y_test, y_pred)
-conf_matrix = confusion_matrix(y_test, y_pred)
+# ==========================
+# SUMMARY SECTION
+# ==========================
+st.header("📝 Summary: Preprocessing vs Postprocessing")
 
-# ---------------------------------------------
-# UI Tabs
-# ---------------------------------------------
-tab1, tab2 = st.tabs(["📊 Model Analysis", "🧪 Check Yourself"])
+st.markdown("""
+### 📌 Key Explanation
 
-# =================================================
-# TAB 1 — MODEL ANALYSIS
-# =================================================
-with tab1:
-    st.title("📊 COVID Prediction Model Analysis")
-    
-    st.subheader("Raw Data (First 10 Rows)")
-    st.dataframe(raw_df.head(10))
-    
-    st.subheader("Processed Data (After Encoding)")
-    st.dataframe(df.head(10))
-    
-    st.metric("Model Accuracy", f"{accuracy*100:.2f}%")
-    st.write(f"Best K Selected Automatically: **{best_k}**")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Accuracy Pie Chart
-        fig, ax = plt.subplots()
-        ax.pie(
-            [accuracy, 1 - accuracy],
-            labels=["Correct", "Wrong"],
-            autopct="%1.1f%%",
-            startangle=90,
-            explode=[0.05, 0],
-            colors=["#4CAF50", "#FF5252"]
-        )
-        ax.set_title("Prediction Accuracy Breakdown")
-        st.pyplot(fig)
-    
-    with col2:
-        # Confusion Matrix Heatmap
-        fig, ax = plt.subplots()
-        sns.heatmap(
-            conf_matrix,
-            annot=True,
-            fmt="d",
-            cmap="Blues",
-            xticklabels=["Negative", "Positive"],
-            yticklabels=["Negative", "Positive"],
-            ax=ax
-        )
-        ax.set_title("Confusion Matrix")
-        st.pyplot(fig)
-    
-    # K Optimization Curve
-    st.subheader("Cross-Validation Accuracy vs K")
-    fig, ax = plt.subplots()
-    ax.plot(list(k_scores.keys()), list(k_scores.values()), marker="o", linewidth=2)
-    ax.set_xlabel("K Value")
-    ax.set_ylabel("CV Accuracy")
-    ax.set_title("Finding Best K for KNN")
-    st.pyplot(fig)
-    
-    # Age vs COVID Probability (Logistic Regression Trend)
-    st.subheader("Age vs COVID Outcome Trend")
-    try:
-        import statsmodels.api as sm
-        fig, ax = plt.subplots()
-        sns.regplot(
-            x=df["age"],
-            y=df["outcome"],
-            logistic=True,
-            scatter_kws={"alpha":0.3},
-            line_kws={"color": "red"},
-            ax=ax
-        )
-        ax.set_xlabel("Age")
-        ax.set_ylabel("Probability of COVID Positive")
-        st.pyplot(fig)
-    except:
-        st.warning("Install `statsmodels` to show logistic regression trend: pip install statsmodels")
-    
-    # Outcome Distribution
-    st.subheader("Outcome Distribution")
-    fig, ax = plt.subplots()
-    df["outcome"].value_counts().plot(kind="bar", color=["#2196F3","#FF5722"], ax=ax)
-    ax.set_xticklabels(["Negative", "Positive"], rotation=0)
-    ax.set_ylabel("Number of Patients")
-    ax.set_title("COVID Outcome Distribution")
-    st.pyplot(fig)
+**Preprocessing** is the stage where raw data is cleaned and transformed before applying a machine learning algorithm.  
+In this project, preprocessing includes:
+- Handling missing values  
+- Fixing inconsistent categorical text  
+- Encoding categorical variables  
+- Scaling numerical features  
 
-# =================================================
-# TAB 2 — LIVE PREDICTION
-# =================================================
-with tab2:
-    st.title("🧪 Check Yourself / COVID Prediction")
-    
-    sex = st.selectbox("Sex", ["Male", "Female"])
-    age = st.slider("Age", 1, 100, 30)
-    pneumonia = st.selectbox("Pneumonia", ["Yes", "No"])
-    diabetes = st.selectbox("Diabetes", ["Yes", "No"])
-    asthma = st.selectbox("Asthma", ["Yes", "No"])
-    
-    input_df = pd.DataFrame({
-        "sex": [1 if sex=="Male" else 0],
-        "age": [age],
-        "pneumonia": [1 if pneumonia=="Yes" else 0],
-        "diabetes": [1 if diabetes=="Yes" else 0],
-        "asthma": [1 if asthma=="Yes" else 0]
-    })
-    
-    input_df["age"] = scaler.transform(input_df[["age"]])
-    
-    if st.button("Predict"):
-        pred = knn.predict(input_df)[0]
-        probs = knn.predict_proba(input_df)[0]
-        
-        # Probability Bar Graph
-        fig, ax = plt.subplots()
-        ax.bar(["Negative","Positive"], probs, color=["#2196F3","#FF5722"])
-        ax.set_ylim(0,1)
-        ax.set_ylabel("Probability")
-        ax.set_title("Prediction Probability")
-        st.pyplot(fig)
-        
-        if pred == 1:
-            st.error(f"⚠️ COVID Positive ({probs[1]*100:.2f}% probability)")
-        else:
-            st.success(f"✅ COVID Negative ({probs[0]*100:.2f}% confidence)")
+**Postprocessing** refers to analyzing the cleaned and transformed data and evaluating the model results.  
+This includes:
+- Verifying that no missing values remain  
+- Visualizing scaled features  
+- Comparing model accuracy  
+
+### 🎯 Why Preprocessing Matters for KNN
+KNN relies on distance calculations. Without feature scaling, variables with large values (like income) dominate the distance calculation, leading to poor predictions. After preprocessing, all features contribute fairly, resulting in improved model performance.
+
+**Conclusion:**  
+Preprocessing is a critical step that directly improves the accuracy, reliability, and fairness of KNN predictions.
+""")
+
+st.success("✅ End-to-End demonstration completed successfully!")
