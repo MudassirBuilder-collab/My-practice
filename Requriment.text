@@ -1,0 +1,8 @@
+There are 7 libraries, i have used in a project.
+1. streamli
+2. pandas 
+3. numpy
+4. matplotlib.pyplot 
+5. seaborn as sns
+6. sklearn
+7. imblearn
